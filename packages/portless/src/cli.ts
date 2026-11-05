@@ -166,6 +166,7 @@ import {
 } from "./service.js";
 import { runMcp } from "./mcp.js";
 import { hasHelpFlag, isCommandName, suggestCommand, type CommandName } from "./commands.js";
+import { parseCommandArgs, UsageError } from "./args.js";
 
 const chalk = colors;
 
@@ -1869,13 +1870,11 @@ interface ParsedAppArgs extends ParsedRunArgs {
 
 function parseAppPort(value: string | undefined): number {
   if (!value || value.startsWith("--")) {
-    console.error(colors.red("Error: --app-port requires a port number."));
-    process.exit(1);
+    throw new UsageError("--app-port requires a port number.");
   }
   const port = parsePort(value);
   if (port === null) {
-    console.error(colors.red(`Error: Invalid app port "${value}". Must be 1-65535.`));
-    process.exit(1);
+    throw new UsageError(`Invalid app port "${value}". Must be 1-65535.`);
   }
   return port;
 }
@@ -1989,29 +1988,25 @@ function parseRunArgs(args: string[]): ParsedRunArgs {
     } else if (args[i] === "--name") {
       i++;
       if (!args[i] || args[i].startsWith("-")) {
-        console.error(colors.red("Error: --name requires a name value."));
-        console.error(colors.cyan("  portless run --name <name> <command...>"));
-        process.exit(1);
+        throw new UsageError("--name requires a name value.", [
+          "  portless run --name <name> <command...>",
+        ]);
       }
       name = args[i];
     } else if (args[i] === "--prefix") {
       i++;
       if (args[i] === undefined || args[i].startsWith("-")) {
-        console.error(colors.red('Error: --prefix requires a value (use "" to disable).'));
-        console.error(colors.cyan("  portless run --prefix <label> <command...>"));
-        process.exit(1);
+        throw new UsageError('--prefix requires a value (use "" to disable).', [
+          "  portless run --prefix <label> <command...>",
+        ]);
       }
       prefix = args[i];
     } else if (applySharingFlag(args[i])) {
       // handled
     } else {
-      console.error(colors.red(`Error: Unknown flag "${args[i]}".`));
-      console.error(
-        colors.blue(
-          "Known flags: --name, --prefix, --force, --app-port, --tailscale, --funnel, --ngrok, --cloudflare, --help"
-        )
-      );
-      process.exit(1);
+      throw new UsageError(`Unknown flag "${args[i]}".`, [
+        "Known flags: --name, --prefix, --force, --app-port, --tailscale, --funnel, --ngrok, --cloudflare, --help",
+      ]);
     }
     i++;
   }
@@ -2046,13 +2041,9 @@ function parseAppArgs(args: string[]): ParsedAppArgs {
     } else if (applySharingFlag(args[i])) {
       // handled
     } else {
-      console.error(colors.red(`Error: Unknown flag "${args[i]}".`));
-      console.error(
-        colors.blue(
-          "Known flags: --force, --app-port, --tailscale, --funnel, --ngrok, --cloudflare"
-        )
-      );
-      process.exit(1);
+      throw new UsageError(`Unknown flag "${args[i]}".`, [
+        "Known flags: --force, --app-port, --tailscale, --funnel, --ngrok, --cloudflare",
+      ]);
     }
     i++;
   }
@@ -2074,13 +2065,9 @@ function parseAppArgs(args: string[]): ParsedAppArgs {
     } else if (applySharingFlag(args[i])) {
       // handled
     } else {
-      console.error(colors.red(`Error: Unknown flag "${args[i]}".`));
-      console.error(
-        colors.blue(
-          "Known flags: --force, --app-port, --tailscale, --funnel, --ngrok, --cloudflare"
-        )
-      );
-      process.exit(1);
+      throw new UsageError(`Unknown flag "${args[i]}".`, [
+        "Known flags: --force, --app-port, --tailscale, --funnel, --ngrok, --cloudflare",
+      ]);
     }
     i++;
   }
@@ -2348,7 +2335,8 @@ ${colors.bold("Options:")}
 `);
 }
 
-async function handleTrust(): Promise<void> {
+async function handleTrust(args: string[] = []): Promise<void> {
+  parseCommandArgs("trust", args.slice(1), {}, 0);
   const { dir, port, tls } = await discoverState();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -2430,11 +2418,7 @@ ${colors.bold("Options:")}
 }
 
 async function handleClean(args: string[]): Promise<void> {
-  if (args.length > 1) {
-    console.error(colors.red(`Error: Unknown argument "${args[1]}".`));
-    console.error(colors.cyan("  portless clean --help"));
-    process.exit(1);
-  }
+  parseCommandArgs("clean", args.slice(1), {}, 0);
 
   const serviceResult = tryUninstallService(getEntryScript());
   if (serviceResult.removed) {
@@ -2546,7 +2530,9 @@ ${colors.bold("Options:")}
 }
 
 async function handlePrune(args: string[]): Promise<void> {
-  const forceKill = args.includes("--force");
+  const forceKill = parseCommandArgs("prune", args.slice(1), { "--force": "boolean" }, 0).has(
+    "--force"
+  );
 
   const { dir } = await discoverState();
   const store = new RouteStore(dir, {
@@ -2618,7 +2604,8 @@ async function handlePrune(args: string[]): Promise<void> {
   );
 }
 
-async function handleList(): Promise<void> {
+async function handleList(args: string[]): Promise<void> {
+  parseCommandArgs("list", args.slice(1), {}, 0);
   const { dir, port, tls } = await discoverState();
   const store = new RouteStore(dir, {
     onWarning: (msg) => console.warn(colors.yellow(msg)),
@@ -2664,31 +2651,18 @@ ${colors.bold("Examples:")}
 }
 
 async function handleGet(args: string[]): Promise<void> {
-  let skipWorktree = false;
-  const positional: string[] = [];
-
-  for (let i = 1; i < args.length; i++) {
-    if (args[i] === "--no-worktree") {
-      skipWorktree = true;
-    } else if (args[i].startsWith("-")) {
-      console.error(colors.red(`Error: Unknown flag "${args[i]}".`));
-      console.error(colors.blue("Known flags: --no-worktree, --help"));
-      process.exit(1);
-    } else {
-      positional.push(args[i]);
-    }
+  const parsed = parseCommandArgs("get", args.slice(1), { "--no-worktree": "boolean" }, 1);
+  const name = parsed.positionals[0];
+  if (!name) {
+    throw new UsageError("Missing service name.", [
+      "Usage:",
+      "  portless get <name>",
+      "Example:",
+      "  portless get backend",
+    ]);
   }
 
-  if (positional.length === 0) {
-    console.error(colors.red("Error: Missing service name."));
-    console.error(colors.blue("Usage:"));
-    console.error(colors.cyan("  portless get <name>"));
-    console.error(colors.blue("Example:"));
-    console.error(colors.cyan("  portless get backend"));
-    process.exit(1);
-  }
-
-  const name = positional[0];
+  const skipWorktree = parsed.has("--no-worktree");
   const appConfig = skipWorktree ? null : loadAppConfig();
   const worktree = skipWorktree
     ? null
@@ -2725,36 +2699,58 @@ ${colors.bold("Examples:")}
 }
 
 async function handleAlias(args: string[]): Promise<void> {
-  const isRemove = args[1] === "--remove";
-  const tldFlagValues: string[] = [];
-  for (let i = isRemove ? 2 : 1; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--tld") {
-      const value = args[i + 1];
-      if (!value?.trim() || value.startsWith("-")) {
-        console.error(colors.red("Error: --tld requires a TLD value."));
-        process.exit(1);
-      }
-      tldFlagValues.push(value);
-      i++;
-    } else if (arg.startsWith("-") && (isRemove || arg !== "--force")) {
-      console.error(colors.red(`Error: Unknown flag "${arg}".`));
-      console.error(
-        colors.blue(`Known flags: ${isRemove ? "--tld, --help" : "--force, --tld, --help"}`)
-      );
-      process.exit(1);
-    }
+  const parsed = parseCommandArgs(
+    "alias",
+    args.slice(1),
+    { "--remove": "value", "--force": "boolean", "--tld": "value" },
+    2
+  );
+  const isRemove = parsed.has("--remove");
+  const removeName = parsed.value("--remove");
+  const [aliasName, aliasPortValue] = parsed.positionals;
+  const usageHints = [
+    "Usage:",
+    "  portless alias <name> <port>",
+    "  portless alias --remove <name>",
+    "Example:",
+    "  portless alias my-postgres 5432",
+  ];
+  if (isRemove && parsed.has("--force")) {
+    throw new UsageError("--force cannot be used with --remove.", usageHints);
+  }
+  if (isRemove && parsed.positionals.length > 0) {
+    throw new UsageError(`Unexpected argument "${parsed.positionals[0]}" for portless alias.`, [
+      "See: portless alias --help",
+    ]);
+  }
+  if (!isRemove && !aliasName) throw new UsageError("Missing alias name.", usageHints);
+  if (!isRemove && !aliasPortValue) throw new UsageError("Missing port.", usageHints);
+  if (isRemove && removeName?.startsWith("-")) {
+    throw new UsageError("No alias name provided.", ["  portless alias --remove <name>"]);
+  }
+  if (!isRemove && aliasName?.startsWith("-")) {
+    throw new UsageError("Missing arguments.", usageHints);
   }
 
-  const { dir, tlds, port: proxyPort, tls, lanMode } = await discoverState();
+  const tldFlagValues = parsed.values("--tld");
+  if (tldFlagValues.some((value) => !value.trim())) {
+    throw new UsageError("--tld requires a TLD value.", ["See: portless alias --help"]);
+  }
   let targetTlds: string[] | undefined;
   if (tldFlagValues.length > 0) {
     try {
       targetTlds = [...new Set(tldFlagValues.flatMap((value) => parseTldList(value)))];
     } catch (err) {
-      console.error(colors.red(`Error: ${(err as Error).message}`));
-      process.exit(1);
+      throw new UsageError((err as Error).message, ["See: portless alias --help"]);
     }
+  }
+  const port = aliasPortValue ? parsePort(aliasPortValue) : null;
+  if (!isRemove && port === null) {
+    throw new UsageError(`Invalid port "${aliasPortValue}". Must be 1-65535.`, usageHints);
+  }
+
+  const { dir, tlds, port: proxyPort, tls, lanMode } = await discoverState();
+  if (targetTlds) {
     const unconfigured = targetTlds.find((tld) => !tlds.includes(tld));
     if (unconfigured) {
       console.error(
@@ -2768,13 +2764,7 @@ async function handleAlias(args: string[]): Promise<void> {
   });
 
   if (isRemove) {
-    const aliasName = args[2];
-    if (!aliasName || aliasName.startsWith("-")) {
-      console.error(colors.red("Error: No alias name provided."));
-      console.error(colors.cyan("  portless alias --remove <name>"));
-      process.exit(1);
-    }
-    const hostnames = buildHostnames(aliasName, tlds, targetTlds);
+    const hostnames = buildHostnames(removeName!, tlds, targetTlds);
     const routes = store.loadRoutes();
     const aliases = hostnames.filter((hostname) =>
       routes.some((route) => route.hostname === hostname && route.pid === 0)
@@ -2789,27 +2779,8 @@ async function handleAlias(args: string[]): Promise<void> {
     return;
   }
 
-  const aliasName = args[1];
-  const aliasPort = args[2];
-  if (!aliasName || !aliasPort || aliasName.startsWith("-") || aliasPort.startsWith("-")) {
-    console.error(colors.red("Error: Missing arguments."));
-    console.error(colors.blue("Usage:"));
-    console.error(colors.cyan("  portless alias <name> <port>"));
-    console.error(colors.cyan("  portless alias --remove <name>"));
-    console.error(colors.blue("Example:"));
-    console.error(colors.cyan("  portless alias my-postgres 5432"));
-    process.exit(1);
-  }
-
-  const hostnames = buildHostnames(aliasName, tlds, targetTlds);
-  const port = parsePort(aliasPort);
-  if (port === null) {
-    console.error(colors.red(`Error: Invalid port "${aliasPort}". Must be 1-65535.`));
-    process.exit(1);
-  }
-
-  const force = args.includes("--force");
-  addRoutes(store, hostnames, port, 0, force);
+  const hostnames = buildHostnames(aliasName!, tlds, targetTlds);
+  addRoutes(store, hostnames, port!, 0, parsed.has("--force"));
   console.log(colors.green(`Alias registered: ${hostnames.join(", ")} -> 127.0.0.1:${port}`));
   // Awaited: this command exits, and a warning printed after exit reaches nobody.
   await reportHostsSyncHere(hostnames, proxyPort, tls, lanMode);
@@ -2844,6 +2815,11 @@ async function handleHosts(args: string[]): Promise<void> {
     return;
   }
 
+  if (args[1] !== "sync" && args[1] !== "clean") {
+    throw new UsageError(`Unknown hosts subcommand "${args[1]}".`, ["See: portless hosts --help"]);
+  }
+  parseCommandArgs(`hosts ${args[1]}`, args.slice(2), {}, 0);
+
   if (args[1] === "clean") {
     if (cleanHostsFile()) {
       console.log(colors.green(`Removed portless entries from ${HOSTS_DISPLAY}.`));
@@ -2872,14 +2848,6 @@ async function handleHosts(args: string[]): Promise<void> {
     );
     process.exit(1);
     return;
-  }
-
-  if (args[1] !== "sync") {
-    console.error(colors.red(`Error: Unknown hosts subcommand "${args[1]}".`));
-    console.error(colors.blue("Usage:"));
-    console.error(colors.cyan(`  portless hosts sync    # Reconcile routes with ${HOSTS_DISPLAY}`));
-    console.error(colors.cyan("  portless hosts clean   # Remove portless entries"));
-    process.exit(1);
   }
 
   const { dir } = await discoverState();
@@ -3010,11 +2978,7 @@ ${colors.bold("Options:")}
 }
 
 async function handleDoctor(args: string[]): Promise<void> {
-  if (args.length > 1) {
-    console.error(colors.red(`Error: Unknown argument "${args[1]}".`));
-    console.error(colors.cyan("  portless doctor --help"));
-    process.exit(1);
-  }
+  parseCommandArgs("doctor", args.slice(1), {}, 0);
 
   const findings: DoctorFinding[] = [];
   const add = (status: DoctorStatus, message: string, hint?: string) => {
@@ -3344,37 +3308,30 @@ ${colors.bold("LAN mode (--lan):")}
 }
 
 async function handleProxy(args: string[]): Promise<void> {
-  if (args[1] !== "start" && args[1] !== "stop") {
+  if (args[1] && args[1] !== "start" && args[1] !== "stop") {
+    throw new UsageError(`Unknown proxy subcommand "${args[1]}".`, ["See: portless proxy --help"]);
+  }
+  if (!args[1]) {
     printProxyHelp();
-    process.exit(args[1] ? 1 : 0);
+    return;
   }
 
   if (args[1] === "stop") {
-    let longPort: number | undefined;
-    let shortPort: number | undefined;
-    for (let i = 2; i < args.length; i++) {
-      const arg = args[i];
-      if (arg === "--port" || arg === "-p") {
-        const portValue = args[++i];
-        if (!portValue || portValue.startsWith("-")) {
-          console.error(colors.red(`Error: ${arg} requires a port number.`));
-          process.exit(1);
-        }
-        const parsed = parsePort(portValue);
-        if (parsed === null) {
-          console.error(colors.red(`Error: Invalid port number: ${portValue}`));
-          console.error(colors.blue("Port must be between 1 and 65535."));
-          process.exit(1);
-        }
-        if (arg === "--port") longPort ??= parsed;
-        else shortPort ??= parsed;
-      } else {
-        console.error(colors.red(`Error: Unknown flag "${arg}".`));
-        console.error(colors.blue("Known flags: --port, -p, --help"));
-        process.exit(1);
+    const parsed = parseCommandArgs(
+      "proxy stop",
+      args.slice(2),
+      { "--port": "value", "-p": "value" },
+      0
+    );
+    for (const value of [...parsed.values("--port"), ...parsed.values("-p")]) {
+      if (parsePort(value) === null) {
+        throw new UsageError(`Invalid port number: ${value}`, [
+          "Port must be between 1 and 65535.",
+        ]);
       }
     }
-    const explicitPort = longPort ?? shortPort;
+    const portValue = parsed.value("--port") ?? parsed.value("-p");
+    const explicitPort = portValue === undefined ? undefined : parsePort(portValue)!;
 
     if (explicitPort !== undefined) {
       const dir = resolveStateDir(explicitPort);
@@ -4694,12 +4651,12 @@ async function handleRunMode(args: string[], globalScript?: string): Promise<voi
   }
 
   if (parsed.commandArgs.length === 0) {
-    console.error(colors.red("Error: No command provided."));
-    console.error(colors.blue("Usage:"));
-    console.error(colors.cyan("  portless run <command...>"));
-    console.error(colors.blue("Example:"));
-    console.error(colors.cyan("  portless run next dev"));
-    process.exit(1);
+    throw new UsageError("No command provided.", [
+      "Usage:",
+      "  portless run <command...>",
+      "Example:",
+      "  portless run next dev",
+    ]);
   }
 
   let baseName: string;
@@ -4760,17 +4717,16 @@ async function handleNamedMode(args: string[], explicitName: boolean): Promise<v
   const parsed = parseAppArgs(args);
 
   if (parsed.commandArgs.length === 0) {
-    console.error(colors.red("Error: No command provided."));
     const suggestion = explicitName ? undefined : suggestCommand(parsed.name);
-    if (suggestion) {
-      console.error(colors.blue(`"${parsed.name}" is not a portless command. Did you mean:`));
-      console.error(colors.cyan(`  portless ${suggestion}`));
-    }
-    console.error(colors.blue("Usage:"));
-    console.error(colors.cyan("  portless <name> <command...>"));
-    console.error(colors.blue("Example:"));
-    console.error(colors.cyan("  portless myapp next dev"));
-    process.exit(1);
+    throw new UsageError("No command provided.", [
+      ...(suggestion
+        ? [`"${parsed.name}" is not a portless command. Did you mean:`, `  portless ${suggestion}`]
+        : []),
+      "Usage:",
+      "  portless <name> <command...>",
+      "Example:",
+      "  portless myapp next dev",
+    ]);
   }
 
   if (!parsed.appPort) {
@@ -5353,9 +5309,9 @@ async function main() {
 
   const ipResult = stripGlobalFlag("--ip", true);
   if (ipResult === false) {
-    console.error(chalk.red("Error: --ip requires an IP address."));
-    console.error(chalk.cyan("  portless --lan --ip 192.168.1.42 run <command>"));
-    process.exit(1);
+    throw new UsageError("--ip requires an IP address.", [
+      "  portless --lan --ip 192.168.1.42 run <command>",
+    ]);
   } else if (typeof ipResult === "string") {
     process.env.PORTLESS_LAN_IP = ipResult;
     process.env.PORTLESS_LAN = "1";
@@ -5363,8 +5319,7 @@ async function main() {
 
   const autoIpResult = stripGlobalFlag(INTERNAL_LAN_IP_FLAG, true);
   if (autoIpResult === false) {
-    console.error(chalk.red(`Error: ${INTERNAL_LAN_IP_FLAG} requires an IP address.`));
-    process.exit(1);
+    throw new UsageError(`${INTERNAL_LAN_IP_FLAG} requires an IP address.`);
   } else if (typeof autoIpResult === "string") {
     process.env[INTERNAL_LAN_IP_ENV] = autoIpResult;
     process.env.PORTLESS_LAN = "1";
@@ -5387,9 +5342,7 @@ async function main() {
   // --script flag: override the default "dev" script for zero-arg mode.
   const scriptResult = stripGlobalFlag("--script", true);
   if (scriptResult === false) {
-    console.error(colors.red("Error: --script requires a script name."));
-    console.error(colors.cyan("  portless --script start"));
-    process.exit(1);
+    throw new UsageError("--script requires a script name.", ["  portless --script start"]);
   }
   const globalScript = typeof scriptResult === "string" ? scriptResult : undefined;
 
@@ -5400,9 +5353,9 @@ async function main() {
   if (explicitName) {
     args.shift();
     if (!args[0]) {
-      console.error(colors.red("Error: --name requires an app name."));
-      console.error(colors.cyan("  portless --name <name> <command...>"));
-      process.exit(1);
+      throw new UsageError("--name requires an app name.", [
+        "  portless --name <name> <command...>",
+      ]);
     }
   }
   const command = explicitName || !isCommandName(args[0]) ? undefined : COMMANDS[args[0]];
@@ -5420,10 +5373,7 @@ async function main() {
       const resolved = resolveScriptCommand(scriptName, process.cwd());
       if (resolved) commandArgs = resolved;
     }
-    if (commandArgs.length === 0) {
-      console.error(colors.red("Error: No command provided."));
-      process.exit(1);
-    }
+    if (commandArgs.length === 0) throw new UsageError("No command provided.");
     spawnCommand(commandArgs);
     return;
   }
@@ -5458,6 +5408,11 @@ async function main() {
 }
 
 main().catch((err: unknown) => {
+  if (err instanceof UsageError) {
+    console.error(colors.red(`Error: ${err.message}`));
+    for (const hint of err.hints) console.error(colors.blue(hint));
+    process.exit(2);
+  }
   const message = err instanceof Error ? err.message : String(err);
   console.error(colors.red("Error:"), message);
   process.exit(1);

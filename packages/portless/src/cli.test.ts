@@ -750,8 +750,8 @@ describe("CLI", { timeout: 15_000 }, () => {
       const { status, stderr } = run(["doctor", "typo"], {
         env: { PORTLESS: "0" },
       });
-      expect(status).toBe(1);
-      expect(stderr).toContain("Unknown argument");
+      expect(status).toBe(2);
+      expect(stderr).toContain("Unexpected argument");
       expect(stderr).not.toContain("ENOENT");
     });
   });
@@ -765,10 +765,10 @@ describe("CLI", { timeout: 15_000 }, () => {
       expect(stdout).toContain("--foreground");
     });
 
-    it("exits 1 for unknown proxy subcommand", () => {
-      const { status, stdout } = run(["proxy", "unknown"]);
-      expect(status).toBe(1);
-      expect(stdout).toContain("proxy start");
+    it("exits 2 for unknown proxy subcommand", () => {
+      const { status, stderr } = run(["proxy", "unknown"]);
+      expect(status).toBe(2);
+      expect(stderr).toContain('Unknown proxy subcommand "unknown"');
     });
   });
 
@@ -793,15 +793,15 @@ describe("CLI", { timeout: 15_000 }, () => {
   });
 
   describe("error: no command provided", () => {
-    it("exits 1 when only a name is given without a command", () => {
+    it("exits 2 when only a name is given without a command", () => {
       const { status, stderr } = run(["myapp"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("No command provided");
     });
 
     it("suggests a command when the name is misspelled", () => {
       const { status, stderr } = run(["lsit"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("No command provided");
       expect(stderr).toContain("portless list");
     });
@@ -916,7 +916,7 @@ describe("CLI", { timeout: 15_000 }, () => {
   describe("unknown flag detection", () => {
     it("rejects unknown flags before command", () => {
       const { status, stderr } = run(["--forec", "myapp", "echo", "test"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Unknown flag");
     });
   });
@@ -932,12 +932,12 @@ describe("CLI", { timeout: 15_000 }, () => {
   });
 
   describe("run subcommand dispatch", () => {
-    it("exits 1 with 'No command provided' when no args follow run and no dev script", () => {
+    it("exits 2 with 'No command provided' when no args follow run and no dev script", () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "portless-cli-run-"));
       try {
         fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test-app" }));
         const { status, stderr } = run(["run"], { cwd: tmpDir });
-        expect(status).toBe(1);
+        expect(status).toBe(2);
         expect(stderr).toContain("No command provided");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -960,7 +960,7 @@ describe("CLI", { timeout: 15_000 }, () => {
     it("does not print version for run --version", () => {
       // parseRunArgs rejects unknown flags
       const { status, stderr } = run(["run", "--version"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Unknown flag");
     });
 
@@ -1066,7 +1066,7 @@ describe("CLI", { timeout: 15_000 }, () => {
       const { status, stderr } = run(["run", "--app-port", "abc", "echo", "ok"], {
         env: { PORTLESS: "0" },
       });
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Invalid app port");
     });
 
@@ -1074,7 +1074,7 @@ describe("CLI", { timeout: 15_000 }, () => {
       const { status, stderr } = run(["run", "--app-port"], {
         env: { PORTLESS: "0" },
       });
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("--app-port requires");
     });
 
@@ -1101,31 +1101,31 @@ describe("CLI", { timeout: 15_000 }, () => {
       expect(stdout).toContain("portless alias");
     });
 
-    it("exits 1 with usage when no args given", () => {
+    it("exits 2 with usage when no args given", () => {
       const { status, stderr } = run(["alias"]);
-      expect(status).toBe(1);
-      expect(stderr).toContain("Missing arguments");
+      expect(status).toBe(2);
+      expect(stderr).toContain("Missing alias name");
     });
 
-    it("exits 1 with usage when only name is given", () => {
+    it("exits 2 with usage when only name is given", () => {
       const { status, stderr } = run(["alias", "mydb"]);
-      expect(status).toBe(1);
-      expect(stderr).toContain("Missing arguments");
+      expect(status).toBe(2);
+      expect(stderr).toContain("Missing port");
     });
 
-    it("exits 1 for invalid port", () => {
+    it("exits 2 for invalid port", () => {
       const { status, stderr } = run(["alias", "mydb", "notaport"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Invalid port");
     });
 
-    it("exits 1 without registering a route for a port with trailing text", () => {
+    it("exits 2 without registering a route for a port with trailing text", () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "portless-alias-port-"));
       try {
         const { status, stderr } = run(["alias", "mydb", "192.168.1.1:8123"], {
           env: { PORTLESS_STATE_DIR: tmpDir },
         });
-        expect(status).toBe(1);
+        expect(status).toBe(2);
         expect(stderr).toContain('Invalid port "192.168.1.1:8123"');
         expect(fs.existsSync(path.join(tmpDir, "routes.json"))).toBe(false);
       } finally {
@@ -1133,23 +1133,23 @@ describe("CLI", { timeout: 15_000 }, () => {
       }
     });
 
-    it("exits 1 for invalid proxy stop arguments", () => {
+    it("exits 2 for invalid proxy stop arguments", () => {
       const { status, stderr } = run(["proxy", "stop", "-p", "8123abc"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Invalid port number: 8123abc");
 
       for (const args of [["-p"], ["--port"], ["--port", ""], ["extra"]]) {
         const invalid = run(["proxy", "stop", ...args]);
-        expect(invalid.status).toBe(1);
+        expect(invalid.status).toBe(2);
         expect(invalid.stderr).toContain("Error:");
         expect(invalid.stderr).not.toContain("Proxy is not running");
       }
     });
 
-    it("exits 1 when --remove has no name", () => {
+    it("exits 2 when --remove has no name", () => {
       const { status, stderr } = run(["alias", "--remove"]);
-      expect(status).toBe(1);
-      expect(stderr).toContain("No alias name");
+      expect(status).toBe(2);
+      expect(stderr).toContain("--remove requires a value");
     });
 
     it("prints help without registering a route when --help follows the arguments", () => {
@@ -1166,15 +1166,19 @@ describe("CLI", { timeout: 15_000 }, () => {
       }
     });
 
-    it("exits 1 on unknown flags without registering a route", () => {
+    it("exits 2 on unknown flags without registering a route", () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "portless-alias-flag-"));
       try {
-        for (const flag of ["--frce", "--remove"]) {
+        const cases: Array<[string, string]> = [
+          ["--frce", 'Unknown flag "--frce"'],
+          ["--remove", "--remove requires a value"],
+        ];
+        for (const [flag, message] of cases) {
           const { status, stderr } = run(["alias", "mydb", "5432", flag], {
             env: { PORTLESS_STATE_DIR: tmpDir },
           });
-          expect(status).toBe(1);
-          expect(stderr).toContain(`Unknown flag "${flag}"`);
+          expect(status).toBe(2);
+          expect(stderr).toContain(message);
         }
         expect(fs.existsSync(path.join(tmpDir, "routes.json"))).toBe(false);
       } finally {
@@ -1201,21 +1205,21 @@ describe("CLI", { timeout: 15_000 }, () => {
         expect(remove.status).toBe(0);
         expect(hostnames()).toEqual(["mydb.localhost"]);
 
-        const invalidTlds: Array<[string[], string]> = [
-          [["--tld", "test", "--tld", " "], "--tld requires a TLD value"],
-          [["--tld", "unknown"], 'TLD "unknown" is not configured (localhost, test, dev).'],
-          [["--tld"], "--tld requires a TLD value"],
+        const invalidTlds: Array<[string[], number, string]> = [
+          [["--tld", "test", "--tld", " "], 2, "--tld requires a TLD value"],
+          [["--tld", "unknown"], 1, 'TLD "unknown" is not configured (localhost, test, dev).'],
+          [["--tld"], 2, "--tld requires a value"],
         ];
-        for (const [args, message] of invalidTlds) {
+        for (const [args, status, message] of invalidTlds) {
           const invalid = run(["alias", "mydb", "5432", ...args], { env });
-          expect(invalid.status).toBe(1);
+          expect(invalid.status).toBe(status);
           expect(invalid.stderr).toContain(message);
           expect(hostnames()).toEqual(["mydb.localhost"]);
         }
 
         const forceRemove = run(["alias", "--remove", "mydb", "--force"], { env });
-        expect(forceRemove.status).toBe(1);
-        expect(forceRemove.stderr).toContain('Unknown flag "--force"');
+        expect(forceRemove.status).toBe(2);
+        expect(forceRemove.stderr).toContain("--force cannot be used with --remove");
         expect(hostnames()).toEqual(["mydb.localhost"]);
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1285,7 +1289,7 @@ describe("CLI", { timeout: 15_000 }, () => {
 
     it("rejects unknown hosts subcommand", () => {
       const { status, stderr } = run(["hosts", "typo"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Unknown hosts subcommand");
     });
 
@@ -1418,8 +1422,8 @@ describe("CLI", { timeout: 15_000 }, () => {
 
     it("rejects unknown arguments", () => {
       const { status, stderr } = run(["clean", "typo"]);
-      expect(status).toBe(1);
-      expect(stderr).toContain("Unknown argument");
+      expect(status).toBe(2);
+      expect(stderr).toContain("Unexpected argument");
     });
 
     it("does not bypass when PORTLESS=0 is set", () => {
@@ -1438,8 +1442,8 @@ describe("CLI", { timeout: 15_000 }, () => {
 
     it("does not bypass clean with extra args when PORTLESS=0", () => {
       const { status, stderr } = run(["clean", "typo"], { env: { PORTLESS: "0" } });
-      expect(status).toBe(1);
-      expect(stderr).toContain("Unknown argument");
+      expect(status).toBe(2);
+      expect(stderr).toContain("Unexpected argument");
     });
   });
 
@@ -1463,11 +1467,6 @@ describe("CLI", { timeout: 15_000 }, () => {
       expect(status).toBe(0);
       expect(stdout).toContain("start");
       expect(stdout).toContain("stop");
-    });
-
-    it("exits 1 for unknown proxy subcommand", () => {
-      const { status } = run(["proxy", "typo"]);
-      expect(status).toBe(1);
     });
 
     it("prints help instead of stopping when stop is given --help", () => {
@@ -2296,9 +2295,9 @@ describe("CLI", { timeout: 15_000 }, () => {
       expect(stdout).toContain("portless get");
     });
 
-    it("exits 1 with usage when no name given", () => {
+    it("exits 2 with usage when no name given", () => {
       const { status, stderr } = run(["get"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Missing service name");
     });
 
@@ -2316,7 +2315,7 @@ describe("CLI", { timeout: 15_000 }, () => {
 
     it("rejects unknown flags", () => {
       const { status, stderr } = run(["get", "--typo", "backend"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("Unknown flag");
     });
 
@@ -2474,15 +2473,15 @@ describe("CLI", { timeout: 15_000 }, () => {
       expect(stdout.trim()).toBe("ok");
     });
 
-    it("exits 1 when --name has no value", () => {
+    it("exits 2 when --name has no value", () => {
       const { status, stderr } = run(["--name"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("--name requires");
     });
 
-    it("exits 1 when --name has name but no command", () => {
+    it("exits 2 when --name has name but no command", () => {
       const { status, stderr } = run(["--name", "myapp"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("No command provided");
     });
   });
@@ -2502,15 +2501,15 @@ describe("CLI", { timeout: 15_000 }, () => {
       expect(stdout.trim()).toBe("ok");
     });
 
-    it("exits 1 when --name has no value", () => {
+    it("exits 2 when --name has no value", () => {
       const { status, stderr } = run(["run", "--name"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("--name requires");
     });
 
-    it("exits 1 when --name value looks like a flag", () => {
+    it("exits 2 when --name value looks like a flag", () => {
       const { status, stderr } = run(["run", "--name", "--force", "echo", "ok"]);
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("--name requires");
     });
 
@@ -3242,7 +3241,7 @@ describe("CLI", { timeout: 15_000 }, () => {
         JSON.stringify({ name: "myapp", script: "nonexistent" })
       );
       const { status, stderr } = run(["run"], { cwd: tmpDir });
-      expect(status).toBe(1);
+      expect(status).toBe(2);
       expect(stderr).toContain("No command provided");
     });
 
